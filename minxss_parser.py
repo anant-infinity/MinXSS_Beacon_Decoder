@@ -8,58 +8,147 @@ import pdb, binascii
 from numpy import int8, uint8, int16, uint16, int32, uint32 
 
 class Minxss_Parser():
-    def __init__(self, minxssPacket, log):
+    def __init__(self, inspirePacket, log):
         self.log = log # debug log
 
     # Purpose:
     #   Top level wrapper function to take serial data and return parsed and interpretted telemetry as a dictionary
     # Input:
-    #   minxssPacket [bytearray]: The direct output of the python serial line (connect_serial_decode_kiss.read()), or simulated data in that format
+    #   inspirePacket [bytearray]: The direct output of the python serial line (connect_serial_decode_kiss.read()), or simulated data in that format
     # Output:
     #   selectedTelemetryDictionary [dictionary]: The telemetry with key/value pairs
     #
-    def parsePacket(self, minxssPacket):
+    def parsePacket(self, inspirePacket):
         # Find the sync bytes (0x08, 0x19), reframe the packet to start after sync
-        syncOffset = self.findSyncStartIndex(minxssPacket)
+        syncOffset = self.findSyncStartIndex(inspirePacket)
         if syncOffset == -1:
             self.log.error("No start sync bytes found in minxss_parser, exiting.")
             return -1
         else:
-            minxssPacket = minxssPacket[syncOffset:len(minxssPacket)]
+            inspirePacket = inspirePacket[syncOffset:len(inspirePacket)]
         
         # Prepare a dictionary for storage of telemetry points
         selectedTelemetryDictionary = {}
         
         # Get the telemetry points
-        # Note: Second index in range of minxssPacket must be +1 what you'd normally expect because python is wonky
-        # For example, to grab bytes at indices 3 and 4, you don't do minxssPacket[3:4], you have to do minxssPacket[3:5]
-        selectedTelemetryDictionary['FlightModel'] = self.decodeFlightModel(minxssPacket[51])                                       # [Unitless]
-        selectedTelemetryDictionary['CommandAcceptCount'] = self.decodeCommandAcceptCount(minxssPacket[16:16+2])                    # [#]
-        selectedTelemetryDictionary['SpacecraftMode'] = self.decodeSpacecraftMode(minxssPacket[12])                                 # [Unitless]
-        selectedTelemetryDictionary['PointingMode'] = self.decodePointingMode(minxssPacket[13])                                     # [Unitless]
-        selectedTelemetryDictionary['EnableX123'] = self.decodeEnableX123(minxssPacket[88:88+2])                                    # [Boolean]
-        selectedTelemetryDictionary['EnableSps'] = self.decodeEnableSps(minxssPacket[88:88+2])                                      # [Boolean]
-        selectedTelemetryDictionary['Eclipse'] = self.decodeEclipse(minxssPacket[12])                                               # [Boolean]
-        selectedTelemetryDictionary['SpsX'] = self.decodeSps(minxssPacket[204:204+2])                                               # [deg]
-        selectedTelemetryDictionary['SpsY'] = self.decodeSps(minxssPacket[206:206+2])                                               # [deg]
-        selectedTelemetryDictionary['Xp'] = self.decodeXp(minxssPacket[192:192+4])                                                  # [DN]
-        selectedTelemetryDictionary['CommBoardTemperature'] = self.decodeBytesTemperature(minxssPacket[122:122+2])                  # [deg C]
-        selectedTelemetryDictionary['BatteryTemperature'] = self.decodeBytesTemperatureBattery(minxssPacket[174:174+2])             # [deg C]
-        selectedTelemetryDictionary['EpsBoardTemperature'] = self.decodeBytesTemperature(minxssPacket[128:128+2])                   # [deg C]
-        selectedTelemetryDictionary['CdhBoardTemperature'] = self.decodeBytesTemperature(minxssPacket[86:86+2])                     # [deg C]
-        selectedTelemetryDictionary['MotherboardTemperature'] = self.decodeBytesTemperature(minxssPacket[124:124+2])                # [deg C]
-        selectedTelemetryDictionary['SolarPanelMinusYTemperature'] = self.decodeBytesTemperatureSolarPanel(minxssPacket[160:160+2]) # [deg C]
-        selectedTelemetryDictionary['SolarPanelPlusXTemperature'] = self.decodeBytesTemperatureSolarPanel(minxssPacket[162:162+2])  # [deg C]
-        selectedTelemetryDictionary['SolarPanelPlusYTemperature'] = self.decodeBytesTemperatureSolarPanel(minxssPacket[164:164+2])  # [deg C]
-        selectedTelemetryDictionary['BatteryVoltage'] = self.decodeBytesFuelGaugeBatteryVoltage(minxssPacket[132:132+2])            # [V]
-        selectedTelemetryDictionary['BatteryChargeCurrent'] = self.decodeBytesBatteryCurrent(minxssPacket[168:168+2])               # [mA]
-        selectedTelemetryDictionary['BatteryDischargeCurrent'] = self.decodeBytesBatteryCurrent(minxssPacket[172:172+2])            # [mA]
-        selectedTelemetryDictionary['SolarPanelMinusYCurrent'] = self.decodeBytesSolarArrayCurrent(minxssPacket[136:136+2])         # [mA]
-        selectedTelemetryDictionary['SolarPanelPlusXCurrent'] = self.decodeBytesSolarArrayCurrent(minxssPacket[140:140+2])          # [mA]
-        selectedTelemetryDictionary['SolarPanelPlusYCurrent'] = self.decodeBytesSolarArrayCurrent(minxssPacket[144:144+2])          # [mA]
-        selectedTelemetryDictionary['SolarPanelMinusYVoltage'] = self.decodeBytesSolarArrayVoltage(minxssPacket[138:138+2])         # [V]
-        selectedTelemetryDictionary['SolarPanelPlusXVoltage'] = self.decodeBytesSolarArrayVoltage(minxssPacket[142:142+2])          # [V]
-        selectedTelemetryDictionary['SolarPanelPlusYVoltage'] = self.decodeBytesSolarArrayVoltage(minxssPacket[146:146+2])          # [V]
+        # Note: Second index in range of inspirePacket must be +1 what you'd normally expect because python is wonky
+        # For example, to grab bytes at indices 3 and 4, you don't do inspirePacket[3:4], you have to do inspirePacket[3:5]
+        # C&DH
+        selectedTelemetryDictionary['Time Stamp'] = self.decodeTimeStamp(inspirePacket[0:5])
+        selectedTelemetryDictionary['Commands Received'] = self.decodeCommandReceivedCount(inspirePacket[5:5 + 4])
+        selectedTelemetryDictionary['Last Command Received'] = self.decodeLastCommandReceived(inspirePacket[9:9 + 2])
+        selectedTelemetryDictionary['Temperature'] = self.decodeTemperature(inspirePacket[11:13])
+        selectedTelemetryDictionary['C&DH Primary Data'] = self.decodeCDHPrimaryData(
+            inspirePacket[13:13 + 1])  # Contains Mode, Eclipse and BT_Enable
+        selectedTelemetryDictionary['Rejected CIP Packets'] = self.decodeRejectedCIPPackets(inspirePacket[14:14 + 4])
+        selectedTelemetryDictionary['Last Downlinked HK Sector'] = self.decodeLastDownlinkedHKSector(
+            inspirePacket[18:18 + 4])
+        selectedTelemetryDictionary['Last downlinked Science Sector'] = self.LastdownlinkedScienceSector(
+            inspirePacket[22:22 + 4])
+        selectedTelemetryDictionary['Last downlinked ADCS Sector'] = self.LastdownlinkedADCSSector(
+            inspirePacket[26:26 + 4])
+
+        # EPS
+        selectedTelemetryDictionary['Battery Voltage'] = self.BatteryVoltage(inspirePacket[29:31])
+        selectedTelemetryDictionary['Battery Current'] = self.decodeBatteryCurrent(inspirePacket[31:33])
+        selectedTelemetryDictionary['Battery SOC'] = self.decodeBatterySOC(inspirePacket[33:35])
+        selectedTelemetryDictionary['Battery Temperature'] = self.decodeBatteryTemperature(inspirePacket[35:43])
+        selectedTelemetryDictionary['Solar Panel Voltage'] = self.decodeSolarPanelVoltage(inspirePacket[43:49])
+        selectedTelemetryDictionary['Solar Panel Current'] = self.decodeSolarPanelCurrent(inspirePacket[49:54])
+
+        # Interface
+        selectedTelemetryDictionary['Interface Board Temperature'] = self.decodeInterfaceBoardTemperature(
+            inspirePacket[54:56])
+
+        # EPS
+        selectedTelemetryDictionary['EPS Board Temperature'] = self.decodeEPSBoardTemperature(
+            inspirePacket[56:58])  # [deg C]
+        selectedTelemetryDictionary['CIP Voltage'] = self.decodeCIPVoltage(inspirePacket[58:60])  # [V]
+        selectedTelemetryDictionary['CIP Current'] = self.decodeCIPCurrent(inspirePacket[60:62])  # [mA]
+        selectedTelemetryDictionary['ADCS Voltage'] = self.decodeADCSVoltage(
+            inspirePacket[62:64])  # [V]
+        selectedTelemetryDictionary['ADCS Current'] = self.decodeADCSCurrent(
+            inspirePacket[64:66])  # [mA]
+        selectedTelemetryDictionary['S-Band Voltage'] = self.decodeSBandVoltage(
+            inspirePacket[66:66 + 2])  # [V]
+        selectedTelemetryDictionary['S-Band Current'] = self.decodeSBandCurrent(
+            inspirePacket[68:68 + 2])  # [mA]
+        selectedTelemetryDictionary['UHF Voltage'] = self.decodeUHFVoltage(
+            inspirePacket[70:70 + 2])  # [mA]
+        selectedTelemetryDictionary['UHF Current'] = self.decodeUHFCurrent(
+            inspirePacket[72:72 + 2])  # [mA]
+        selectedTelemetryDictionary['C&DH Voltage'] = self.decodeCDHVoltage(
+            inspirePacket[74:74 + 2])  # [V]
+        selectedTelemetryDictionary['C&DH Current'] = self.decodeCDHCurrent(
+            inspirePacket[76:76 + 2])  # [V]
+        selectedTelemetryDictionary['GPS 3.3 Voltage'] = self.decodeGPS3Voltage(
+            inspirePacket[78:78 + 2])  # [V]
+        selectedTelemetryDictionary['GPS 3.3 Current'] = self.decodeGPS3Current(
+            inspirePacket[80:80 + 2])  # [V]
+        selectedTelemetryDictionary['GPS 12 Voltage'] = self.decodeGPS12Voltage(
+            inspirePacket[82:82 + 6])  # [V]
+        selectedTelemetryDictionary['GPS 12 Current'] = self.decodeGPS12Current(
+            inspirePacket[88:88 + 6])  # [V]
+        selectedTelemetryDictionary['Battery Heater Current'] = self.decodeBatteryHeaterCurrent(
+            inspirePacket[94:94 + 2])  # [V]
+
+        # CIP
+        selectedTelemetryDictionary['General Information'] = self.decodeGeneralInfo(
+            inspirePacket[96:96 + 4])  # [V]
+        selectedTelemetryDictionary['CIP Temperature'] = self.decodeCIPTemperature(
+            inspirePacket[100:100 + 6])  # [V]
+
+        # UHF
+        selectedTelemetryDictionary['System Check Temperature'] = self.decodeSystemChecksTemp(
+            inspirePacket[106:106 + 2])  # [V]
+        selectedTelemetryDictionary['System Check Current Channel'] = self.decodeSystemCheckCurrent(
+            inspirePacket[108:108 + 1])  # [V]
+        selectedTelemetryDictionary['Shell Temperature'] = self.decodeShellTemp(
+            inspirePacket[109:109 + 2])  # [V]
+        selectedTelemetryDictionary['Check Sum Counter'] = self.decodeCheckSumCounter(
+            inspirePacket[111:111 + 2])  # [V]
+        selectedTelemetryDictionary['Configuration Status'] = self.decodeConfigurationStatus(
+            inspirePacket[113:113 + 1])  # [V]
+
+        # SBand
+        selectedTelemetryDictionary['SBandByte'] = self.decodeSBandByte(
+            inspirePacket[114:114 + 1])  # Includes Scrambler Status, PA Gain and Status Register
+
+        # ADCS
+        selectedTelemetryDictionary['Command Status'] = self.decodeCommandStatus(
+            inspirePacket[115:115 + 1])  # [V]
+        selectedTelemetryDictionary['Command Reject Count'] = self.decodeCommandRejectCount(
+            inspirePacket[116:116 + 1])  # [V]
+        selectedTelemetryDictionary['Command Accept Count'] = self.decodeCommandAcceptCount(
+            inspirePacket[117:117 + 1])  # [V]
+        selectedTelemetryDictionary['Time Valid'] = self.decodeTimeValid(
+            inspirePacket[118:118 + 1])  # [V]
+        selectedTelemetryDictionary['Time Now'] = self.decodeTimeNow(
+            inspirePacket[119:119 + 4])  # [V]
+        selectedTelemetryDictionary['Refs Valid'] = self.decodeRefsValid(
+            inspirePacket[123:123 + 1])
+        selectedTelemetryDictionary['Attitude Valid'] = self.decodeAttitudeValid(
+            inspirePacket[123:123 + 1])  # [V]
+        selectedTelemetryDictionary['ADCS Mode'] = self.decodeADCSMode(
+            inspirePacket[124:124 + 1])  # [V]
+        selectedTelemetryDictionary['Recommend Sun Point'] = self.decodeRecommendSunPoint(
+            inspirePacket[125:125 + 1])  # [V]
+        selectedTelemetryDictionary['Sun Point State'] = self.decodeSunPointState(
+            inspirePacket[126:126 + 1])  # [V]
+        selectedTelemetryDictionary['Star Tracker Temperature'] = self.decodeStarTrackerTemperature(
+            inspirePacket[127:127 + 1])  # [V]
+        selectedTelemetryDictionary['Wheel Temperatures'] = self.decodeWheelTemperatures(
+            inspirePacket[128:128 + 6])  # [V]
+        selectedTelemetryDictionary['Digital Bus Voltage'] = self.decodeDigitalBusVoltage(
+            inspirePacket[134:134 + 2])  # [V]
+        selectedTelemetryDictionary['Sun Vector'] = self.decodeSunVector(
+            inspirePacket[136:136 + 6])  # [V]
+        selectedTelemetryDictionary['Wheel Est Drag'] = self.decodeWheelEstDrag(
+            inspirePacket[142:142 + 6])  # [V]
+        selectedTelemetryDictionary['Wheel Measured Speed'] = self.decodeWheelMeasuredSpeed(
+            inspirePacket[148:148 + 6])  # [V]
+        selectedTelemetryDictionary['Body Frame Rate'] = self.decodeBodyFrameRate(
+            inspirePacket[154:154 + 12])  # [V]
         
         self.log.info("From MinXSS parser:")
         self.log.info(selectedTelemetryDictionary)
@@ -131,55 +220,178 @@ class Minxss_Parser():
     #   telemetryPoint [int, float, string, as appropriate]: The telemetry point in human-readable form and units
     #
     
-    def decodeFlightModel(self, bytearrayTemp):
-        return (bytearrayTemp & 0x0030) >> 4 # [Unitless]
-    
-    def decodeCommandAcceptCount(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp) # [#]
-    
-    def decodeSpacecraftMode(self, bytearrayTemp):
-        return (bytearrayTemp & 0x07) # [Unitless]
-    
-    def decodePointingMode(self, bytearrayTemp):
-        return (bytearrayTemp & 0x01) # [Unitless]
-    
-    def decodeEnableX123(self, bytearrayTemp):
+    def decodeTimeStamp(self, bytearrayTemp):
+        return (bytearrayTemp & 0x0030) >> 4  # [Unitless]
+
+    def decodeCommandReceivedCount(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp)  # [#]
+
+    def decodeLastCommandReceived(self, bytearrayTemp):
+        return (bytearrayTemp & 0x07)  # [Unitless]
+
+    def decodeTemperature(self, bytearrayTemp):
+        return (bytearrayTemp & 0x01)  # [Unitless]
+
+    def decodeCDHPrimaryData(self, bytearrayTemp):
         decodedByte = self.decodeBytes(bytearrayTemp)
-        return (decodedByte & 0x0002) >> 1 # [Boolean]
-    
-    def decodeEnableSps(self, bytearrayTemp):
+        return (decodedByte & 0x0002) >> 1  # [Boolean]
+
+    def decodeRejectedCIPPackets(self, bytearrayTemp):
         decodedByte = self.decodeBytes(bytearrayTemp)
-        return (decodedByte & 0x0004) >> 2 # [Boolean]
-    
-    def decodeSps(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp) / 1e4 * 3.0 # [deg]
-    
-    def decodeEclipse(self, bytearrayTemp):
+        return (decodedByte & 0x0004) >> 2  # [Boolean]
+
+    def decodeLastDownlinkedHKSector(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp) / 1e4 * 3.0  # [deg]
+
+    def LastdownlinkedScienceSector(self, bytearrayTemp):
         return (bytearrayTemp & 0x08) >> 3
 
-    def decodeXp(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) # [DN]
-    
-    def decodeBytesTemperature(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp) / 256.0 # [deg C]
-    
-    def decodeBytesTemperatureBattery(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) * 0.18766 - 250.2 # [deg C]
-    
-    def decodeBytesTemperatureSolarPanel(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) * 0.1744 - 216.0 # [deg C]
-    
-    def decodeBytesFuelGaugeBatteryVoltage(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) / 6415.0 # [V]
-    
-    def decodeBytesBatteryCurrent(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) * 3.5568 - 61.6 # [mA]
-    
-    def decodeBytesSolarArrayCurrent(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) * 163.8 / 327.68 # [mA]
-    
-    def decodeBytesSolarArrayVoltage(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt = 1) * 32.76 / 32768.0 # [V]
+    def LastdownlinkedADCSSector(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1)  # [DN]
+
+    def BatteryVoltage(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp) / 256.0  # [deg C]
+
+    def decodeBatteryCurrent(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 0.18766 - 250.2  # [deg C]
+
+    def decodeBatterySOC(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 0.1744 - 216.0  # [deg C]
+
+    def decodeBatteryTemperature(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) / 6415.0  # [V]
+
+    def decodeSolarPanelVoltage(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 3.5568 - 61.6  # [mA]
+
+    def decodeSolarPanelCurrent(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 163.8 / 327.68  # [mA]
+
+    def decodeInterfaceBoardTemperature(self, bytearrayTemp):
+        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 32.76 / 32768.0  # [V]
+
+    def decodeEPSBoardTemperature(self, bytearrayTemp):
+        return 1
+
+    def decodeCIPVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeCIPCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeADCSVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeADCSCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeSBandVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeSBandCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeUHFVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeUHFCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeCDHVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeCDHCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeGPS3Voltage(self, bytearrayTemp):
+        return 1
+
+    def decodeGPS3Current(self, bytearrayTemp):
+        return 1
+
+    def decodeGPS12Voltage(self, bytearrayTemp):
+        return 1
+
+    def decodeGPS12Current(self, bytearrayTemp):
+        return 1
+
+    def decodeBatteryHeaterCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeGeneralInfo(self, bytearrayTemp):
+        return 1
+
+    def decodeCIPTemperature(self, bytearrayTemp):
+        return 1
+
+    def decodeSystemChecksTemp(self, bytearrayTemp):
+        return 1
+
+    def decodeSystemCheckCurrent(self, bytearrayTemp):
+        return 1
+
+    def decodeShellTemp(self, bytearrayTemp):
+        return 1
+
+    def decodeCheckSumCounter(self, bytearrayTemp):
+        return 1
+
+    def decodeConfigurationStatus(self, bytearrayTemp):
+        return 1
+
+    def decodeSBandByte(self, bytearrayTemp):
+        return 1
+
+    def decodeCommandStatus(self, bytearrayTemp):
+        return 1
+
+    def decodeCommandRejectCount(self, bytearrayTemp):
+        return 1
+
+    def decodeCommandAcceptCount(self, bytearrayTemp):
+        return 1
+
+    def decodeTimeValid(self, bytearrayTemp):
+        return 1
+
+    def decodeTimeNow(self, bytearrayTemp):
+        return 1
+
+    def decodeAttitudeValid(self, bytearrayTemp):
+        return 1
+
+    def decodeRefsValid(self, bytearrayTemp):
+        return 1
+
+    def decodeADCSMode(self, bytearrayTemp):
+        return 1
+
+    def decodeRecommendSunPoint(self, bytearrayTemp):
+        return 1
+
+    def decodeSunPointState(self, bytearrayTemp):
+        return 1
+
+    def decodeStarTrackerTemperature(self, bytearrayTemp):
+        return 1
+
+    def decodeWheelTemperatures(self, bytearrayTemp):
+        return 1
+
+    def decodeDigitalBusVoltage(self, bytearrayTemp):
+        return 1
+
+    def decodeSunVector(self, bytearrayTemp):
+        return 1
+
+    def decodeWheelEstDrag(self, bytearrayTemp):
+        return 1
+
+    def decodeWheelMeasuredSpeed(self, bytearrayTemp):
+        return 1
+
+    def decodeBodyFrameRate(self, bytearrayTemp):
+        return 1
     
     ##
     # End byte->human-readable conversion functions
@@ -188,14 +400,14 @@ class Minxss_Parser():
     # Purpose:
     #   Test parsing a packet
     # Input:
-    #   minxssPacket [bytearray]: The direct output of the python serial line (connect_serial_decode_kiss.read()), or simulated data in that format
+    #   inspirePacket [bytearray]: The direct output of the python serial line (connect_serial_decode_kiss.read()), or simulated data in that format
     # Output:
     #   ... not sure yet
     #
-    def testParsePacket(self, minxssPacket, log):
+    def testParsePacket(self, inspirePacket, log):
         log.info("Testing MinXSS packet parse")
-        selectedTelemetryDictionary = self.parsePacket(minxssPacket)
-        print selectedTelemetryDictionary
+        selectedTelemetryDictionary = self.parsePacket(inspirePacket)
+        print (selectedTelemetryDictionary)
         log.info(selectedTelemetryDictionary)
 
 # Purpose:
