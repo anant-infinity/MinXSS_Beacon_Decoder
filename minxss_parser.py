@@ -5,6 +5,7 @@ __contact__ = "jmason86@gmail.com"
 import os
 import logging
 import pdb, binascii
+import math
 from numpy import int8, uint8, int16, uint16, int32, uint32 
 
 class Minxss_Parser():
@@ -205,7 +206,28 @@ class Minxss_Parser():
                                 (uint8(bytearrayTemp[1] << 8)) | (uint8(bytearrayTemp[0] << 0)))
         else:
             self.log.debug("More bytes than expected")
-                
+
+    # Purpose:
+    #   Converts the Voltage across thermistor , which is recieved from telemetry , to Temperature.
+    # Input:
+    #   bytearrayTemp [bytearray]: The bytes corresponding to the telemetry to decode.
+    #                              Can accept 2 bytes
+    # Output:
+    #   Temperature in Celsius
+
+    def TempCalc(self, bytearrayTemp):
+        Tinv = 1 / 298
+        B = 3430  # Confirm Value
+        Voltage_thermistor = bytearrayTemp[0] + bytearrayTemp[1]
+        Resistance_thermistor = ((Voltage_thermistor / (3.3 - Voltage_thermistor)) * 23 * 1000)
+        R = Resistance_thermistor / 10000
+        Temperature = (1/(((Tinv) + ((math.log(R) / B)))))  # In Kelvin
+        return (Temperature-273)  # In Celsius
+
+
+
+
+
     ##
     # The following functions all have the same purpose: to convert raw bytes to human-readable output.
     # Only the units will be commented on. The function and variable names are explicit and verbose for clarity.
@@ -221,57 +243,61 @@ class Minxss_Parser():
     #
     
     def decodeTimeStamp(self, bytearrayTemp):
-        return (bytearrayTemp & 0x0030) >> 4  # [Unitless]
+        return
 
     def decodeCommandReceivedCount(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp)  # [#]
+        return
 
     def decodeLastCommandReceived(self, bytearrayTemp):
-        return (bytearrayTemp & 0x07)  # [Unitless]
+        return
 
     def decodeTemperature(self, bytearrayTemp):
-        return (bytearrayTemp & 0x01)  # [Unitless]
+        return (self.TempCalc(bytearrayTemp))
 
     def decodeCDHPrimaryData(self, bytearrayTemp):
-        decodedByte = self.decodeBytes(bytearrayTemp)
-        return (decodedByte & 0x0002) >> 1  # [Boolean]
+        return
 
     def decodeRejectedCIPPackets(self, bytearrayTemp):
-        decodedByte = self.decodeBytes(bytearrayTemp)
-        return (decodedByte & 0x0004) >> 2  # [Boolean]
+        return
 
     def decodeLastDownlinkedHKSector(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp) / 1e4 * 3.0  # [deg]
+        return
 
     def LastdownlinkedScienceSector(self, bytearrayTemp):
-        return (bytearrayTemp & 0x08) >> 3
+        return
 
     def LastdownlinkedADCSSector(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1)  # [DN]
+        return
 
     def BatteryVoltage(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp) / 256.0  # [deg C]
+        #Calculatind Battery Voltage , refer INA3221 Datasheet Pg 27
+        temp_hexdata = bytearrayTemp[0]+bytearrayTemp[1]
+        scale = 16
+        num_of_bits = 16
+        bin(int(temp_hexdata, scale))[2:].zfill(num_of_bits)
+
+        return self.decodeBytes(bytearrayTemp)
 
     def decodeBatteryCurrent(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 0.18766 - 250.2  # [deg C]
+        return
 
     def decodeBatterySOC(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 0.1744 - 216.0  # [deg C]
+        return
 
     def decodeBatteryTemperature(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) / 6415.0  # [V]
+        return (self.TempCalc(bytearrayTemp))
 
     def decodeSolarPanelVoltage(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 3.5568 - 61.6  # [mA]
+        return
 
     def decodeSolarPanelCurrent(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 163.8 / 327.68  # [mA]
+        return
 
     def decodeInterfaceBoardTemperature(self, bytearrayTemp):
-        return self.decodeBytes(bytearrayTemp, returnUnsignedInt=1) * 32.76 / 32768.0  # [V]
+        return (self.TempCalc(bytearrayTemp))
 
     def decodeEPSBoardTemperature(self, bytearrayTemp):
-        return 1
+        return (self.TempCalc(bytearrayTemp))
 
     def decodeCIPVoltage(self, bytearrayTemp):
         return 1
@@ -392,7 +418,8 @@ class Minxss_Parser():
 
     def decodeBodyFrameRate(self, bytearrayTemp):
         return 1
-    
+
+
     ##
     # End byte->human-readable conversion functions
     ##
